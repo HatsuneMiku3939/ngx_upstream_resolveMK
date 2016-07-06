@@ -24,15 +24,15 @@ typedef struct {
 typedef struct {
 	ngx_http_upstream_resolveMK_peer_t *peers;
 
-	ngx_uint_t resolved_max_ips;
+	ngx_uint_t resolver_max_ip;
 	ngx_uint_t resolved_num;
-	ngx_str_t resolved_domain;
-	ngx_int_t resolved_stats;
+	ngx_str_t resolver_domain;
+	ngx_int_t resolver_stats;
 	ngx_uint_t resolved_index;
 
 	time_t resolved_access;
-	time_t resolved_interval;
-	ngx_str_t resolved_service;
+	time_t resolver_interval;
+	ngx_str_t resolver_service;
 
 	ngx_uint_t upstream_retry;
 } ngx_http_upstream_resolveMK_srv_conf_t;
@@ -122,7 +122,7 @@ static ngx_int_t ngx_http_upstream_resolveMK_init(ngx_conf_t *cf,
 	ngx_http_upstream_resolveMK_srv_conf_t *urcf;
 	us->peer.init = ngx_http_upstream_resolveMK_init_peer;
 	urcf = ngx_http_conf_upstream_srv_conf(us, ngx_http_upstream_resolveMK_module);
-	urcf->resolved_stats = RESOLVE_STATS_DONE;
+	urcf->resolver_stats = RESOLVE_STATS_DONE;
 
 	return NGX_OK;
 }
@@ -173,17 +173,16 @@ static ngx_int_t ngx_http_upstream_resolveMK_get_peer(ngx_peer_connection_t *pc,
 	pc->cached = 0;
 	pc->connection = NULL;
 
-	if (urcf->resolved_stats == RESOLVE_STATS_WAIT) {
+	if (urcf->resolver_stats == RESOLVE_STATS_WAIT) {
 		ngx_log_debug0(NGX_LOG_DEBUG_HTTP, pc->log, 0, "upstream_resolveMK: resolving");
 		goto assign;
 	}
 
-	if (ngx_time() <= urcf->resolved_access + urcf->resolved_interval) {
+	if (ngx_time() <= urcf->resolved_access + urcf->resolver_interval) {
+		ngx_log_debug0(NGX_LOG_DEBUG_HTTP, pc->log, 0,
+			       "upstream_resolveMK: update from DNS cache");
 		goto assign;
 	}
-
-	ngx_log_debug0(NGX_LOG_DEBUG_HTTP, pc->log, 0,
-	               "upstream_resolveMK: update from DNS cache");
 	ctx = ngx_resolve_start(urpd->clcf->resolver, NULL);
 
 	if (ctx == NULL) {
@@ -199,12 +198,12 @@ static ngx_int_t ngx_http_upstream_resolveMK_get_peer(ngx_peer_connection_t *pc,
 
 	ngx_log_debug0(NGX_LOG_DEBUG_HTTP, pc->log, 0,
 	               "upstream_resolveMK: resolve_start ok");
-	ctx->name = urcf->resolved_domain;
-	ctx->service = urcf->resolved_service;
+	ctx->name = urcf->resolver_domain;
+	ctx->service = urcf->resolver_service;
 	ctx->handler = ngx_http_upstream_resolveMK_handler;
 	ctx->data = urcf;
 	ctx->timeout = urpd->clcf->resolver_timeout;
-	urcf->resolved_stats = RESOLVE_STATS_WAIT;
+	urcf->resolver_stats = RESOLVE_STATS_WAIT;
 
 	if (ngx_resolve_name(ctx) != NGX_OK) {
 		ngx_log_error(NGX_LOG_ALERT, pc->log, 0,
@@ -251,14 +250,14 @@ static char *ngx_http_upstream_resolveMK(ngx_conf_t *cf, ngx_command_t *cmd,
 
 	time_t interval;
 	ngx_str_t *value, domain, s;
-	ngx_int_t max_ips;
+	ngx_int_t max_ip;
 	ngx_uint_t retry;
 	ngx_http_upstream_resolveMK_peer_t *paddr;
 	ngx_url_t u;
 	ngx_uint_t i;
 
 	interval = 10;
-	max_ips = 20;
+	max_ip = 20;
 	retry = 1;
 	domain.data = NULL;
 	domain.len = 0;
@@ -303,8 +302,8 @@ static char *ngx_http_upstream_resolveMK(ngx_conf_t *cf, ngx_command_t *cmd,
 		return NGX_CONF_ERROR;
 	}
 
-	urcf->resolved_service.len = value[2].len - 8;
-	urcf->resolved_service.data = &value[2].data[8];
+	urcf->resolver_service.len = value[2].len - 8;
+	urcf->resolver_service.data = &value[2].data[8];
 
 	for (i = 3; i < cf->args->nelts; i++) {
 
@@ -321,9 +320,9 @@ static char *ngx_http_upstream_resolveMK(ngx_conf_t *cf, ngx_command_t *cmd,
 		}
 
 		if (ngx_strncmp(value[i].data, "max_ip=", 7) == 0) {
-			max_ips = ngx_atoi(value[i].data + 7, value[i].len - 7);
+			max_ip = ngx_atoi(value[i].data + 7, value[i].len - 7);
 
-			if (max_ips == NGX_ERROR || max_ips < 1) {
+			if (max_ip == NGX_ERROR || max_ip < 1) {
 				goto invalid;
 			}
 
@@ -339,7 +338,7 @@ static char *ngx_http_upstream_resolveMK(ngx_conf_t *cf, ngx_command_t *cmd,
 	}
 
 	urcf->peers = ngx_pcalloc(cf->pool,
-	                          max_ips * sizeof(ngx_http_upstream_resolveMK_peer_t));
+	                          max_ip * sizeof(ngx_http_upstream_resolveMK_peer_t));
 
 	if (urcf->peers == NULL) {
 		ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
@@ -347,9 +346,9 @@ static char *ngx_http_upstream_resolveMK(ngx_conf_t *cf, ngx_command_t *cmd,
 		return NGX_CONF_ERROR;
 	}
 
-	urcf->resolved_interval = interval;
-	urcf->resolved_domain = domain;
-	urcf->resolved_max_ips = max_ips;
+	urcf->resolver_interval = interval;
+	urcf->resolver_domain = domain;
+	urcf->resolver_max_ip = max_ip;
 	urcf->upstream_retry = retry;
 	ngx_memzero(&u, sizeof(ngx_url_t));
 	u.url = value[1];
@@ -372,7 +371,7 @@ static char *ngx_http_upstream_resolveMK(ngx_conf_t *cf, ngx_command_t *cmd,
 		paddr->name = u.addrs[i].name;
 		urcf->resolved_num++;
 
-		if (urcf->resolved_num >= urcf->resolved_max_ips) {
+		if (urcf->resolved_num >= urcf->resolver_max_ip) {
 			break;
 		}
 	}
@@ -449,7 +448,7 @@ ngx_http_upstream_resolveMK_handler(ngx_resolver_ctx_t *ctx)
 		                               NGX_SOCKADDR_STRLEN, 1);
 		urcf->resolved_num++;
 
-		if (urcf->resolved_num >= urcf->resolved_max_ips) {
+		if (urcf->resolved_num >= urcf->resolver_max_ip) {
 			break;
 		}
 	}
@@ -457,7 +456,7 @@ ngx_http_upstream_resolveMK_handler(ngx_resolver_ctx_t *ctx)
 end:
 	ngx_resolve_name_done(ctx);
 	urcf->resolved_access = ngx_time();
-	urcf->resolved_stats = RESOLVE_STATS_DONE;
+	urcf->resolver_stats = RESOLVE_STATS_DONE;
 }
 
 #if (NGX_HTTP_SSL)
