@@ -15,7 +15,7 @@ Usage:
 
 ```
 	upstream backend {
-		resolveMK marathon.mesos service=rails
+		resolveMK marathon.mesos service=_rails._tcp
 	}
 ```
 
