@@ -295,6 +295,9 @@ static char *ngx_http_upstream_resolveMK(ngx_conf_t *cf, ngx_command_t *cmd,
 	domain.data = value[1].data;
 	domain.len  = value[1].len;
 
+	us->addrs = ngx_pcalloc(cf->pool, sizeof(ngx_addr_t));
+	us->addrs->name = domain;
+	
 	if (ngx_strncmp(value[2].data, "service=", 8) != 0) {
 		ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
 		                   "service is not given");
@@ -377,7 +380,7 @@ static char *ngx_http_upstream_resolveMK(ngx_conf_t *cf, ngx_command_t *cmd,
 	}
 
 	/* urcf->resolved_index = 0 */
-	urcf->resolved_access = ngx_time();
+        urcf->resolved_access = ngx_time() - urcf->resolver_interval;
 
 	return NGX_CONF_OK;
 invalid:
