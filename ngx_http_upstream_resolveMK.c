@@ -249,7 +249,7 @@ static char *ngx_http_upstream_resolveMK(ngx_conf_t *cf, ngx_command_t *cmd,
 	ngx_http_upstream_server_t *us;
 
 	time_t interval;
-	ngx_str_t *value, domain, s;
+	ngx_str_t *value, domain, s, service;
 	ngx_int_t max_ip;
 	ngx_uint_t retry;
 	ngx_http_upstream_resolveMK_peer_t *paddr;
@@ -261,6 +261,11 @@ static char *ngx_http_upstream_resolveMK(ngx_conf_t *cf, ngx_command_t *cmd,
 	retry = 1;
 	domain.data = NULL;
 	domain.len = 0;
+
+	u_char *p, *end;
+	service.data = NULL;
+	service.len = 0;
+
 	uscf = ngx_http_conf_get_module_srv_conf(cf, ngx_http_upstream_module);
 
 	/* Just For Padding, upstream { } need it */
@@ -305,8 +310,30 @@ static char *ngx_http_upstream_resolveMK(ngx_conf_t *cf, ngx_command_t *cmd,
 		return NGX_CONF_ERROR;
 	}
 
-	urcf->resolver_service.len = value[2].len - 8;
-	urcf->resolver_service.data = &value[2].data[8];
+	service.len  = value[2].len - 8;
+	service.data = &value[2].data[8];
+
+	// test on trailing '.'
+	if (value[2].data[value[2].len - 1] == '.') {
+		service.len  = service.len - 1;
+		domain = service ;
+	
+		p = ngx_strchr(service.data, '.');
+		end = service.data + service.len;
+		while ( p = ngx_strlchr(p+1, end, '.') ) {
+			service.len = p - service.data;
+		}		
+
+		domain.len = domain.len - service.len -1;
+		domain.data = domain.data + service.len +1;
+	
+		urcf->resolver_domain = domain;
+	} else {
+		urcf->resolver_domain = domain;
+	}
+
+	urcf->resolver_service = service;
+
 
 	for (i = 3; i < cf->args->nelts; i++) {
 
@@ -349,8 +376,8 @@ static char *ngx_http_upstream_resolveMK(ngx_conf_t *cf, ngx_command_t *cmd,
 		return NGX_CONF_ERROR;
 	}
 
+
 	urcf->resolver_interval = interval;
-	urcf->resolver_domain = domain;
 	urcf->resolver_max_ip = max_ip;
 	urcf->upstream_retry = retry;
 	ngx_memzero(&u, sizeof(ngx_url_t));
