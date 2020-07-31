@@ -28,6 +28,9 @@ resolveMK:
   * max_ip: IP buffer size.
   * interval: DNS cache refresh interval.
   * retry_off: Do not retry if one IP fails.
+
+Putting an '.' at the end of the service, prevents from de domain-name being appended to the service.
+
 ```
 
 # Special Thanks
